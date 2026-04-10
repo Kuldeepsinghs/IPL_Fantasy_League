@@ -563,6 +563,10 @@ function clamp(value, min, max){
       const identityName = getOnlineIdentityName();
       return !!(currentPlayer && identityName && currentPlayer.name.toLowerCase() === identityName.toLowerCase());
     }
+    function canCurrentDeviceControlMatches(){
+      if(!currentRoomId) return true;
+      return isCurrentUserHost();
+    }
     function serializeRoomGameState(){
       return {
         players: JSON.parse(JSON.stringify(players || [])),
@@ -574,7 +578,16 @@ function clamp(value, min, max){
         spinInfoHtml: spinInfo ? spinInfo.innerHTML : "",
         pickFormVisible: pickForm ? pickForm.style.display !== "none" : false,
         pickSearchValue: pickSearch ? pickSearch.value : "",
-        wheelRotation: currentRotation
+        wheelRotation: currentRotation,
+        simResultHtml: simResult ? simResult.innerHTML : "",
+        tournamentResultHtml: tournamentResult ? tournamentResult.innerHTML : "",
+        tossResultText: tossResultLine ? tossResultLine.textContent : "",
+        seasonStats: JSON.parse(JSON.stringify(seasonStats || createEmptySeasonStats())),
+        rivalryStats: JSON.parse(JSON.stringify(rivalryStats || {})),
+        leagueFlow: leagueFlow ? JSON.parse(JSON.stringify(leagueFlow)) : null,
+        teamAValue: teamASelect ? teamASelect.value : "",
+        teamBValue: teamBSelect ? teamBSelect.value : "",
+        venueValue: venueSelect ? venueSelect.value : ""
       };
     }
     function syncRoomGameState(reason = ""){
@@ -609,9 +622,19 @@ function clamp(value, min, max){
             populatePlayerSelect(selectedTeamName, players[currentPlayerIndex], roomState.pickSearchValue || "");
           }
         }
+        seasonStats = roomState.seasonStats && typeof roomState.seasonStats === "object" ? roomState.seasonStats : createEmptySeasonStats();
+        rivalryStats = roomState.rivalryStats && typeof roomState.rivalryStats === "object" ? roomState.rivalryStats : {};
+        leagueFlow = roomState.leagueFlow && typeof roomState.leagueFlow === "object" ? roomState.leagueFlow : null;
+        if(teamASelect && typeof roomState.teamAValue === "string") teamASelect.value = roomState.teamAValue;
+        if(teamBSelect && typeof roomState.teamBValue === "string") teamBSelect.value = roomState.teamBValue;
+        if(venueSelect && typeof roomState.venueValue === "string") venueSelect.value = roomState.venueValue;
+        if(simResult) simResult.innerHTML = roomState.simResultHtml || "";
+        if(tournamentResult) tournamentResult.innerHTML = roomState.tournamentResultHtml || "";
+        if(tossResultLine) tossResultLine.textContent = roomState.tossResultText || "";
         downloadBtn.disabled = !gameStarted;
-        simulateBtn.disabled = !gameStarted;
-        tournamentBtn.disabled = !gameStarted;
+        simulateBtn.disabled = !gameStarted || !canCurrentDeviceControlMatches();
+        tournamentBtn.disabled = !gameStarted || !canCurrentDeviceControlMatches();
+        playNextMatchBtn.disabled = !leagueFlow || leagueFlow.phase === "done" || !canCurrentDeviceControlMatches();
         spinButton.disabled = !gameStarted || !canCurrentDeviceControlTurn();
         renderPlayers();
         renderGlobalSummary();
@@ -619,6 +642,8 @@ function clamp(value, min, max){
         populateSimSelects();
         updateGameStatus();
         updateActivePlayerHighlight();
+        renderStatsDashboard();
+        renderRivalryBoard();
       } finally {
         applyingRemoteRoomState = false;
       }
@@ -1036,10 +1061,10 @@ function clamp(value, min, max){
       pickForm.style.display="none";
       pickMessage.textContent="";
       downloadBtn.disabled=false;
-      simulateBtn.disabled=false;
-      tournamentBtn.disabled=false;
+      simulateBtn.disabled=!canCurrentDeviceControlMatches();
+      tournamentBtn.disabled=!canCurrentDeviceControlMatches();
       playNextMatchBtn.disabled = true;
-      spinButton.disabled=false;
+      spinButton.disabled=!canCurrentDeviceControlTurn();
       renderPlayers();
       renderGlobalSummary();
       updateBestSquadSummary();
@@ -3126,6 +3151,7 @@ function clamp(value, min, max){
     }
     // ---------- Simulate single match button ----------
     simulateBtn.addEventListener("click", ()=>{
+      if(!canCurrentDeviceControlMatches()){ simResult.textContent = "Only the host can run shared match simulations."; return; }
       simResult.innerHTML = "";
       tossResultLine.textContent = "";
       if(!players || players.length<2){ simResult.textContent = "Need at least two squads to simulate."; return; }
@@ -3151,10 +3177,11 @@ function clamp(value, min, max){
       title.addEventListener("click", ()=> { boardHolder.style.display = boardHolder.style.display === "none" ? "" : "none"; });
       renderScoreboardBlock(res, boardHolder);
       simResult.appendChild(outer);
+      syncRoomGameState("single-sim");
     });
 
     // clear scoreboards
-    clearScoreboards.addEventListener("click", ()=>{ simResult.innerHTML = ""; tournamentResult.innerHTML = ""; tossResultLine.textContent = ""; leagueFlow = null; playNextMatchBtn.disabled = true; });
+    clearScoreboards.addEventListener("click", ()=>{ if(!canCurrentDeviceControlMatches()) return; simResult.innerHTML = ""; tournamentResult.innerHTML = ""; tossResultLine.textContent = ""; leagueFlow = null; playNextMatchBtn.disabled = true; syncRoomGameState("clear-scoreboards"); });
 
     function renderPointsTable(table){
       const wrap = document.createElement("div");
@@ -3378,8 +3405,8 @@ function clamp(value, min, max){
       refreshLeagueView();
     }
 
-    tournamentBtn.addEventListener("click", ()=> initLeagueFlow());
-    playNextMatchBtn.addEventListener("click", ()=> playNextLeagueMatch());
+    tournamentBtn.addEventListener("click", ()=>{ if(!canCurrentDeviceControlMatches()) return; initLeagueFlow(); syncRoomGameState("init-league"); });
+    playNextMatchBtn.addEventListener("click", ()=>{ if(!canCurrentDeviceControlMatches()) return; playNextLeagueMatch(); syncRoomGameState("play-next-league"); });
 
     // download squads
     downloadBtn.addEventListener("click", ()=>{
