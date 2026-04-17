@@ -414,6 +414,7 @@ function clamp(value, min, max){
     let seasonStats = createEmptySeasonStats();
     let rivalryStats = {};
     let leagueFlow = null;
+    let latestPicks = [];
     let maxPlayersPerTeam = MAX_PER_TEAM;
     let currentRoomId = "";
     let currentRoomUnsubscribe = null;
@@ -428,6 +429,8 @@ function clamp(value, min, max){
     const playersList = document.getElementById("playersList");
     const gameStatus = document.getElementById("gameStatus");
     const bestSquadEl = document.getElementById("bestSquad");
+    const turnOwnerBanner = document.getElementById("turnOwnerBanner");
+    const latestPickFeed = document.getElementById("latestPickFeed");
     const pickForm = document.getElementById("pickForm");
     const pickedTeamLabel = document.getElementById("pickedTeamLabel");
     const playerSelect = document.getElementById("playerSelect");
@@ -584,6 +587,7 @@ function clamp(value, min, max){
         tossResultText: tossResultLine ? tossResultLine.textContent : "",
         seasonStats: JSON.parse(JSON.stringify(seasonStats || createEmptySeasonStats())),
         rivalryStats: JSON.parse(JSON.stringify(rivalryStats || {})),
+        latestPicks: JSON.parse(JSON.stringify(latestPicks || [])),
         leagueFlow: leagueFlow ? JSON.parse(JSON.stringify(leagueFlow)) : null,
         teamAValue: teamASelect ? teamASelect.value : "",
         teamBValue: teamBSelect ? teamBSelect.value : "",
@@ -624,6 +628,7 @@ function clamp(value, min, max){
         }
         seasonStats = roomState.seasonStats && typeof roomState.seasonStats === "object" ? roomState.seasonStats : createEmptySeasonStats();
         rivalryStats = roomState.rivalryStats && typeof roomState.rivalryStats === "object" ? roomState.rivalryStats : {};
+        latestPicks = Array.isArray(roomState.latestPicks) ? roomState.latestPicks : [];
         leagueFlow = roomState.leagueFlow && typeof roomState.leagueFlow === "object" ? roomState.leagueFlow : null;
         if(teamASelect && typeof roomState.teamAValue === "string") teamASelect.value = roomState.teamAValue;
         if(teamBSelect && typeof roomState.teamBValue === "string") teamBSelect.value = roomState.teamBValue;
@@ -642,6 +647,7 @@ function clamp(value, min, max){
         populateSimSelects();
         updateGameStatus();
         updateActivePlayerHighlight();
+        renderLatestPickFeed();
         renderStatsDashboard();
         renderRivalryBoard();
       } finally {
@@ -841,26 +847,65 @@ function clamp(value, min, max){
     function getGlobalPickedNameSet(){ const s=new Set(); players.forEach(p=>p.squad.forEach(x=>s.add(x.playerName))); return s; }
     function getGlobalPickedDetailed(){ const arr=[]; players.forEach(p=>p.squad.forEach(x=>arr.push({owner:p.name,playerName:x.playerName,role:x.role,team:x.team}))); return arr; }
     function renderGlobalSummary(){ /* global picks tab removed */ }
+    function renderLatestPickFeed(){
+      if(!latestPickFeed) return;
+      latestPickFeed.innerHTML = "";
+      if(!latestPicks || latestPicks.length === 0){
+        latestPickFeed.textContent = "No picks yet.";
+        return;
+      }
+      latestPicks.slice(-6).reverse().forEach(pick=>{
+        const chip = document.createElement("div");
+        chip.className = "pick-chip";
+        chip.innerHTML = `<strong>${pick.owner || "Player"}</strong> picked ${formatPlayerName(pick.playerName || "-")} (${pick.team || "-"})`;
+        latestPickFeed.appendChild(chip);
+      });
+    }
+    function updateTurnOwnerBanner(){
+      if(!turnOwnerBanner){
+        return;
+      }
+      if(!gameStarted || !players[currentPlayerIndex]){
+        turnOwnerBanner.textContent = "Waiting for setup...";
+        return;
+      }
+      const cur = players[currentPlayerIndex];
+      const ownerText = cur && cur.ownerUid ? " | Remote turn synced" : "";
+      turnOwnerBanner.textContent = `Turn: ${cur.name}${ownerText}`;
+    }
+    function addLatestPick(owner, playerName, team){
+      latestPicks.push({
+        owner: owner || "Player",
+        playerName: playerName || "",
+        team: team || "",
+        at: new Date().toISOString()
+      });
+      if(latestPicks.length > 12) latestPicks = latestPicks.slice(-12);
+      renderLatestPickFeed();
+    }
     function updateBestSquadSummary(){ if(!players||players.length===0){ bestSquadEl.textContent=""; return; } let best=null, bestScore=-Infinity; players.forEach(p=>{ if(!p.squad||p.squad.length===0) return; const eff=getEffectiveSquad(p); const sc=getSquadStrength(eff); if(sc>bestScore){bestScore=sc;best=p.name;} }); if(!best) bestSquadEl.textContent="No squads rated yet."; else bestSquadEl.textContent=`Current best squad (based on XI if set): ${best} (${bestScore} pts)`; }
 
     function renderPlayers(){ playersList.innerHTML=""; players.forEach((p,idx)=>{ const card=document.createElement("div"); card.className="player-card"; card.dataset.playerIndex=idx; if(idx===currentPlayerIndex) card.classList.add("active"); const header=document.createElement("div"); header.className="player-card-header"; const name=document.createElement("div"); name.textContent=p.name; const count=document.createElement("div"); count.className="badge"; count.textContent=`${p.squad.length} / ${SQUAD_SIZE}`; header.appendChild(name); header.appendChild(count); card.appendChild(header);
+      const meta=document.createElement("div"); meta.className="player-card-meta"; if(p.ownerUid && currentRoomData && Array.isArray(currentRoomData.members)){ const member = currentRoomData.members.find(m=>m && m.uid === p.ownerUid); if(member){ const ownerBadge=document.createElement("div"); ownerBadge.className="owner-badge"; ownerBadge.textContent=`Device: ${member.name}`; meta.appendChild(ownerBadge); } } if(meta.childElementCount) card.appendChild(meta);
       const eff=getEffectiveSquad(p); const counts=getRoleCounts(eff), strength=getSquadStrength(eff), foreign=getForeignCount(eff), inForm=getInFormCount(eff);
       const roles=document.createElement("div"); roles.className="roles"; roles.textContent=`BAT ${counts.BAT} | BOWL ${counts.BOWL} | AR ${counts.AR} | WK ${counts.WK}`; card.appendChild(roles);
       const foreignEl=document.createElement("div"); foreignEl.className="foreign-count"; foreignEl.textContent=`Foreign (used): ${foreign} / ${MAX_FOREIGN}`; card.appendChild(foreignEl);
       const inFormEl=document.createElement("div"); inFormEl.className="in-form"; inFormEl.textContent=`In-form (used): ${inForm}`; card.appendChild(inFormEl);
       const strengthEl=document.createElement("div"); strengthEl.className="strength"; strengthEl.textContent=`Strength (used): ${strength} pts`; card.appendChild(strengthEl);
-      const xiStatus=document.createElement("div"); xiStatus.className="roles"; xiStatus.textContent= (p.playing && p.playing.xi && p.playing.xi.length===11 && p.playing.impact) ? `Playing XI + Impact: SET${(p.playing.bowlingPlan && p.playing.bowlingPlan.length===20) ? " | Bowling Plan: SET" : ""}` : "Playing XI + Impact: not set"; card.appendChild(xiStatus);
+      const xiStatus=document.createElement("div"); xiStatus.className="roles"; xiStatus.textContent= (p.playing && p.playing.xi && p.playing.xi.length===11 && p.playing.impact) ? `Playing XI + Impact: SET${(p.playing.bowlingPlan && p.playing.bowlingPlan.length===20) ? " | Bowling Plan: SET" : ""}${(p.playing.superOver && p.playing.superOver.bowler && Array.isArray(p.playing.superOver.batters) && p.playing.superOver.batters.length===3) ? " | Super Over: SET" : ""}` : "Playing XI + Impact: not set"; card.appendChild(xiStatus);
       const ul=document.createElement("ul"); ul.className="squad-list"; p.squad.forEach((s,i)=>{ const li=document.createElement("li"); const left=document.createElement("span"); left.textContent=`${i+1}. ${formatPlayerName(s.playerName)} (${formatRole(s.role)})`; const teamSpan=document.createElement("span"); teamSpan.className="team"; teamSpan.textContent=s.team; li.appendChild(left); li.appendChild(teamSpan); ul.appendChild(li); }); card.appendChild(ul);
       if(p.squad.length>=12){ const xiBtn=document.createElement("button"); xiBtn.type="button"; xiBtn.textContent="Set Playing XI + Impact"; xiBtn.className="set-xi-btn"; xiBtn.style.marginTop="4px"; card.appendChild(xiBtn); }
       playersList.appendChild(card); });
       updateBestSquadSummary();
+      updateTurnOwnerBanner();
+      renderLatestPickFeed();
     }
 
     function updateActivePlayerHighlight(){ document.querySelectorAll(".player-card").forEach(c=>c.classList.remove("active")); const card=document.querySelector(`.player-card[data-player-index='${currentPlayerIndex}']`); if(card) card.classList.add("active"); }
     function getMaxPlayersPerTeam(){
       return Math.max(1, Math.min(SQUAD_SIZE, Number(maxPlayersPerTeam) || MAX_PER_TEAM));
     }
-    function updateGameStatus(msg){ if(!gameStarted){ gameStatus.textContent="Go to Setup tab and start."; return; } const base=`Current turn: ${players[currentPlayerIndex].name}. Rules: ${SQUAD_SIZE} players, max ${getMaxPlayersPerTeam()} per IPL team, max ${MAX_FOREIGN} foreign.`; gameStatus.textContent = msg ? base + " " + msg : base; }
+    function updateGameStatus(msg){ if(!gameStarted){ gameStatus.textContent="Go to Setup tab and start."; updateTurnOwnerBanner(); return; } const base=`Current turn: ${players[currentPlayerIndex].name}. Rules: ${SQUAD_SIZE} players, max ${getMaxPlayersPerTeam()} per IPL team, max ${MAX_FOREIGN} foreign.`; gameStatus.textContent = msg ? base + " " + msg : base; updateTurnOwnerBanner(); }
 
     function getRandomInt(maxExclusive){
       if(maxExclusive<=1) return 0;
@@ -1086,6 +1131,7 @@ function clamp(value, min, max){
       dynamicPlayerState = {};
       seasonStats = createEmptySeasonStats();
       rivalryStats = {};
+      latestPicks = [];
       fallbackRngState = 0;
       currentPlayerIndex=0;
       gameStarted=true;
@@ -1197,6 +1243,7 @@ function clamp(value, min, max){
           if(globalNow.has(p.name)){ alert(`${p.name} was just picked by someone else.`); return; }
           if(FOREIGN_PLAYERS.has(p.name) && getForeignCount(cur.squad) >= MAX_FOREIGN){ alert(`Foreign limit (${MAX_FOREIGN}) reached.`); return; }
           cur.squad.push({ playerName: p.name, team: team, role: p.role });
+          addLatestPick(cur.name, p.name, team);
           Array.from(modalList.querySelectorAll("button")).forEach(b => b.disabled = true);
           renderPlayers(); renderGlobalSummary(); populateSimSelects();
           lastSpin.playerIndex = null; lastSpin.team = null;
@@ -1224,6 +1271,7 @@ function clamp(value, min, max){
       const sameTeamCount = cur.squad.filter(s=>s.team===chosenTeam).length;
       if(sameTeamCount>=getMaxPlayersPerTeam()){ pickMessage.textContent=`Already ${getMaxPlayersPerTeam()} from ${chosenTeam}`; pickMessage.className="error"; pickForm.style.display="none"; return; } const global = getGlobalPickedNameSet(); if(global.has(chosenPlayerName)){ pickMessage.textContent=`${chosenPlayerName} already picked`; pickMessage.className="error"; populatePlayerSelect(selectedTeamName,cur); return; } const teamArr = IPL_PLAYERS[chosenTeam]||[]; const pObj = teamArr.find(x=>x.name===chosenPlayerName) || {name:chosenPlayerName,role:"BAT"}; if(FOREIGN_PLAYERS.has(pObj.name) && getForeignCount(cur.squad)>=MAX_FOREIGN){ pickMessage.textContent=`Foreign limit reached`; pickMessage.className="error"; populatePlayerSelect(selectedTeamName,cur); return; }
       cur.squad.push({playerName:pObj.name,team:chosenTeam,role:pObj.role});
+      addLatestPick(cur.name, pObj.name, chosenTeam);
       renderPlayers(); renderGlobalSummary(); populateSimSelects(); pickMessage.textContent=`${formatPlayerName(pObj.name)} added to ${cur.name}`; pickMessage.className="success"; pickForm.style.display="none";
       lastSpin.playerIndex = null; lastSpin.team = null;
       syncRoomGameState("draft-pick");
@@ -1265,6 +1313,58 @@ function clamp(value, min, max){
       const iph=document.createElement("option"); iph.value=""; iph.textContent="-- Select impact --"; impactSelect.appendChild(iph);
       p.squad.forEach(entry=>{ const o=document.createElement("option"); o.value=entry.playerName; o.textContent=formatPlayerName(entry.playerName); impactSelect.appendChild(o); });
       if(p.playing && p.playing.impact) impactSelect.value = p.playing.impact;
+      const savedSuperOver = p.playing && p.playing.superOver ? p.playing.superOver : null;
+      const superOverBox = document.createElement("div");
+      superOverBox.className = "super-over-box";
+      const superOverTitle = document.createElement("div");
+      superOverTitle.className = "small-text";
+      superOverTitle.textContent = "Super Over setup: choose 3 batters in order and 1 bowler. This is used automatically if the match ties.";
+      superOverBox.appendChild(superOverTitle);
+      const superOverGrid = document.createElement("div");
+      superOverGrid.className = "super-over-grid";
+      const superOverBattingSelects = [];
+      for(let i=0; i<3; i++){
+        const label = document.createElement("label");
+        label.textContent = `SO Batter ${i + 1}`;
+        const sel = document.createElement("select");
+        sel.name = `super-over-bat-${i}`;
+        const ph = document.createElement("option");
+        ph.value = "";
+        ph.textContent = "-- Select batter --";
+        sel.appendChild(ph);
+        p.squad.forEach(entry=>{
+          const o = document.createElement("option");
+          o.value = entry.playerName;
+          o.textContent = formatPlayerName(entry.playerName);
+          sel.appendChild(o);
+        });
+        if(savedSuperOver && Array.isArray(savedSuperOver.batters) && savedSuperOver.batters[i]){
+          sel.value = savedSuperOver.batters[i];
+        }
+        superOverBattingSelects.push(sel);
+        label.appendChild(sel);
+        superOverGrid.appendChild(label);
+      }
+      const superOverBowlerLabel = document.createElement("label");
+      superOverBowlerLabel.textContent = "SO Bowler";
+      const superOverBowlerSelect = document.createElement("select");
+      superOverBowlerSelect.name = "super-over-bowler";
+      const superOverBowlerPh = document.createElement("option");
+      superOverBowlerPh.value = "";
+      superOverBowlerPh.textContent = "-- Select bowler --";
+      superOverBowlerSelect.appendChild(superOverBowlerPh);
+      p.squad.filter(entry=>isBowlingRole(entry.role)).forEach(entry=>{
+        const o = document.createElement("option");
+        o.value = entry.playerName;
+        o.textContent = `${formatPlayerName(entry.playerName)} (${formatRole(entry.role)})`;
+        superOverBowlerSelect.appendChild(o);
+      });
+      if(savedSuperOver && savedSuperOver.bowler){
+        superOverBowlerSelect.value = savedSuperOver.bowler;
+      }
+      superOverBowlerLabel.appendChild(superOverBowlerSelect);
+      superOverGrid.appendChild(superOverBowlerLabel);
+      superOverBox.appendChild(superOverGrid);
       const bowlPlanTitle=document.createElement("div"); bowlPlanTitle.className="small-text"; bowlPlanTitle.textContent="Bowling Plan (optional): choose bowler for each over (max 4 overs per bowler, blank = auto)";
       const bowlCandidates = p.squad.filter(x=>isBowlingRole(x.role));
       const bowlPlanWrap = document.createElement("div");
@@ -1305,6 +1405,7 @@ function clamp(value, min, max){
       const msg=document.createElement("div"); msg.className="xi-error"; msg.style.display="none";
 
       controls.appendChild(impactLabel); controls.appendChild(impactSelect);
+      controls.appendChild(superOverBox);
       controls.appendChild(bowlPlanTitle); controls.appendChild(bowlPlanWrap);
       controls.appendChild(saveBtn); controls.appendChild(msg);
       editor.appendChild(controls);
@@ -1396,6 +1497,42 @@ function clamp(value, min, max){
         return;
       }
 
+      const superOverBatters = superOverBattingSelects.map(sel=>sel.value).filter(Boolean);
+      if(superOverBatters.length !== 3){
+        msg.textContent = "Select 3 super over batters.";
+        msg.style.display = "block";
+        return;
+      }
+      if((new Set(superOverBatters)).size !== 3){
+        msg.textContent = "Super over batters must be unique.";
+        msg.style.display = "block";
+        return;
+      }
+      const superOverPool = new Set([...xiNames, impactVal]);
+      const invalidSuperOverBatter = superOverBatters.find(name=>!superOverPool.has(name));
+      if(invalidSuperOverBatter){
+        msg.textContent = `${formatPlayerName(invalidSuperOverBatter)} must be inside XI + Impact for the super over.`;
+        msg.style.display = "block";
+        return;
+      }
+      const superOverBowler = superOverBowlerSelect.value;
+      if(!superOverBowler){
+        msg.textContent = "Select a super over bowler.";
+        msg.style.display = "block";
+        return;
+      }
+      if(!superOverPool.has(superOverBowler)){
+        msg.textContent = `${formatPlayerName(superOverBowler)} must be inside XI + Impact for the super over.`;
+        msg.style.display = "block";
+        return;
+      }
+      const superOverBowlerEntry = (p.squad || []).find(s=>s.playerName === superOverBowler);
+      if(!superOverBowlerEntry || !isBowlingRole(superOverBowlerEntry.role)){
+        msg.textContent = `${formatPlayerName(superOverBowler)} must be a bowling option for the super over.`;
+        msg.style.display = "block";
+        return;
+      }
+
       const bowlPlan = Array.from(editor.querySelectorAll("select[name^='bowl-ov-']")).map(s=>s.value || "");
       const assigned = bowlPlan.filter(Boolean);
       const countMap = {};
@@ -1421,11 +1558,20 @@ function clamp(value, min, max){
         return;
       }
 
-      p.playing = { xi: xiNames, impact: impactVal, bowlingPlan: bowlPlan };
+      p.playing = {
+        xi: xiNames,
+        impact: impactVal,
+        bowlingPlan: bowlPlan,
+        superOver: {
+          batters: superOverBatters,
+          bowler: superOverBowler
+        }
+      };
       msg.textContent = "Saved!";
       msg.className = "xi-ok";
       msg.style.display = "block";
       renderPlayers();
+      syncRoomGameState("save-xi");
     });
 
     function syncTossCallerOptions(){
@@ -1802,6 +1948,185 @@ function clamp(value, min, max){
         }
       }
       return chosen.slice(0,6);
+    }
+    function getSuperOverConfig(playerObj){
+      const squadMap = new Map((playerObj && playerObj.squad ? playerObj.squad : []).map(p=>[p.playerName, p]));
+      const poolNames = [];
+      getOrderedXI(playerObj).slice(0, 11).forEach(name=>{
+        if(name && !poolNames.includes(name)) poolNames.push(name);
+      });
+      if(playerObj && playerObj.playing && playerObj.playing.impact && !poolNames.includes(playerObj.playing.impact)){
+        poolNames.push(playerObj.playing.impact);
+      }
+      const saved = playerObj && playerObj.playing && playerObj.playing.superOver ? playerObj.playing.superOver : null;
+      const savedBatters = saved && Array.isArray(saved.batters) ? saved.batters.filter(name=>poolNames.includes(name)) : [];
+      const batters = [];
+      savedBatters.forEach(name=>{
+        if(name && !batters.includes(name)) batters.push(name);
+      });
+      poolNames.forEach(name=>{
+        if(batters.length < 3 && !batters.includes(name)) batters.push(name);
+      });
+      const savedBowlerEntry = saved && saved.bowler ? squadMap.get(saved.bowler) : null;
+      let bowler = savedBowlerEntry && poolNames.includes(saved.bowler) && isBowlingRole(savedBowlerEntry.role) ? saved.bowler : "";
+      if(!bowler){
+        const fallbackBowler = getBowlingAttack(playerObj).find(entry=>poolNames.includes(entry.playerName));
+        if(fallbackBowler) bowler = fallbackBowler.playerName;
+      }
+      if(!bowler){
+        const firstBowlingName = poolNames.find(name=>{
+          const entry = squadMap.get(name);
+          return entry && isBowlingRole(entry.role);
+        });
+        bowler = firstBowlingName || poolNames[0] || "";
+      }
+      return {
+        batters: batters.slice(0, 3),
+        bowler
+      };
+    }
+    function simulateSuperOverInnings(battingTeamObj, bowlingTeamObj, conditions = null, targetScore = null){
+      const batConfig = getSuperOverConfig(battingTeamObj);
+      const bowlConfig = getSuperOverConfig(bowlingTeamObj);
+      const battingMap = new Map((battingTeamObj.squad || []).map(p=>[p.playerName, p]));
+      const bowlingMap = new Map((bowlingTeamObj.squad || []).map(p=>[p.playerName, p]));
+      const bowlerName = bowlConfig.bowler;
+      const bowlerEntry = bowlingMap.get(bowlerName) || { role: "BOWL" };
+      const order = batConfig.batters.slice(0, 3);
+      const batterStats = {};
+      order.forEach(name=>{
+        batterStats[name] = { name, runs: 0, balls: 0, fours: 0, sixes: 0, outDesc: "NOT OUT", SR: "0.0" };
+      });
+      let strikerSlot = 0;
+      let nonStrikerSlot = Math.min(1, Math.max(0, order.length - 1));
+      let nextSlot = 2;
+      let score = 0;
+      let wickets = 0;
+      let balls = 0;
+      while(balls < 6 && wickets < 2 && order[strikerSlot]){
+        const strikerName = order[strikerSlot];
+        const strikerEntry = battingMap.get(strikerName) || { role: "BAT" };
+        const batRating = getPlayerRating(strikerName, strikerEntry.role);
+        const strikeRate = getBatStrikeRate(strikerName, strikerEntry.role);
+        const batForm = getCurrentFormScore(strikerName, strikerEntry.role);
+        const bowlRating = getPlayerRating(bowlerName, bowlerEntry.role || "BOWL");
+        const wicketSkill = getWicketSkill(bowlerName, bowlerEntry.role || "BOWL");
+        const bowlEcon = getBowlingEconomy(bowlerName, bowlerEntry.role || "BOWL");
+        const runsNeeded = targetScore === null ? 8 : Math.max(0, targetScore - score);
+        const ballsLeft = Math.max(1, 6 - balls);
+        const pressure = targetScore === null ? 0.62 : clampValue(runsNeeded / ballsLeft / 3.4, 0.25, 1.4);
+        const wicketProb = clampValue(
+          0.08 +
+          wicketSkill * 0.022 +
+          (8.0 - Math.min(10.5, bowlEcon)) * 0.018 -
+          (batRating - 7.0) * 0.02 -
+          (strikeRate - 145) * 0.0007 +
+          pressure * 0.05,
+          0.05,
+          0.3
+        );
+        balls++;
+        batterStats[strikerName].balls++;
+        if(Math.random() < wicketProb){
+          wickets++;
+          batterStats[strikerName].outDesc = `b ${bowlerName}`;
+          if(wickets >= 2 || nextSlot >= order.length){
+            break;
+          }
+          order[strikerSlot] = order[nextSlot];
+          nextSlot++;
+          continue;
+        }
+        const aggression = clampValue(
+          0.46 +
+          pressure * 0.32 +
+          (conditions && conditions.boundary === "small" ? 0.06 : 0) -
+          (conditions && conditions.pitch === "spin" && isSpinBowlingRole(bowlerEntry.role, bowlerName) ? 0.04 : 0) +
+          batForm * 0.14,
+          0.18,
+          1.35
+        );
+        const roll = Math.random();
+        let runs = 0;
+        if(roll < Math.max(0.08, 0.22 - aggression * 0.08)) runs = 0;
+        else if(roll < 0.48 - aggression * 0.03) runs = 1;
+        else if(roll < 0.68) runs = 2;
+        else if(roll < 0.74) runs = 3;
+        else if(roll < 0.92 - aggression * 0.04) runs = 4;
+        else runs = 6;
+        if(targetScore !== null && runs > runsNeeded){
+          runs = runsNeeded;
+        }
+        score += runs;
+        batterStats[strikerName].runs += runs;
+        if(runs === 4) batterStats[strikerName].fours++;
+        if(runs === 6) batterStats[strikerName].sixes++;
+        if(runs % 2 === 1){
+          const temp = strikerSlot;
+          strikerSlot = nonStrikerSlot;
+          nonStrikerSlot = temp;
+        }
+        if(balls < 6 && balls % 6 === 0){
+          const temp = strikerSlot;
+          strikerSlot = nonStrikerSlot;
+          nonStrikerSlot = temp;
+        }
+        if(targetScore !== null && score >= targetScore){
+          break;
+        }
+      }
+      const batters = order.map(name=>{
+        const entry = batterStats[name] || { name, runs: 0, balls: 0, fours: 0, sixes: 0, outDesc: "DNB", SR: "0.0" };
+        const sr = entry.balls > 0 ? ((entry.runs * 100) / entry.balls).toFixed(1) : "0.0";
+        return { ...entry, SR: sr };
+      });
+      return {
+        battingTeam: battingTeamObj.name,
+        bowlingTeam: bowlingTeamObj.name,
+        score,
+        wickets,
+        balls,
+        overs: formatOversFromBalls(balls),
+        batters,
+        bowler: {
+          name: bowlerName,
+          overs: formatOversFromBalls(Math.min(6, balls)),
+          runs: score,
+          wickets: Math.min(2, wickets)
+        },
+        config: {
+          batters: batConfig.batters.slice(0, 3),
+          bowler: bowlerName
+        }
+      };
+    }
+    function resolveSuperOver(teamAObj, teamBObj, conditions = null){
+      const rounds = [];
+      for(let round = 1; round <= 3; round++){
+        const teamAInnings = simulateSuperOverInnings(teamAObj, teamBObj, conditions, null);
+        const teamBInnings = simulateSuperOverInnings(teamBObj, teamAObj, conditions, teamAInnings.score + 1);
+        rounds.push({ round, teamA: teamAInnings, teamB: teamBInnings });
+        if(teamAInnings.score !== teamBInnings.score){
+          const winnerIdx = teamAInnings.score > teamBInnings.score ? 0 : 1;
+          return {
+            winnerIdx,
+            rounds,
+            summaryLine: `${winnerIdx === 0 ? teamAObj.name : teamBObj.name} won after a super over`
+          };
+        }
+      }
+      const fallbackA = getSquadStrength(getEffectiveSquad(teamAObj));
+      const fallbackB = getSquadStrength(getEffectiveSquad(teamBObj));
+      const winnerIdx = fallbackA >= fallbackB ? 0 : 1;
+      rounds.push({
+        round: rounds.length + 1,
+        note: "Automatic tie-break used after repeated super over tie."
+      });
+      return {
+        winnerIdx,
+        rounds,
+        summaryLine: `${winnerIdx === 0 ? teamAObj.name : teamBObj.name} edged the tie-break after repeated super overs`
+      };
     }
 
     // decide realistic wickets for an innings using score, batting strength and bowling strength
@@ -2645,7 +2970,12 @@ function clamp(value, min, max){
           if(shiftGuard > 800) break;
         }
       }
-      const caps = activeBowlers.map(b=>getPlayerCaps(b.playerName || b.name, b.role || "BOWL").maxWickets);
+      const caps = activeBowlers.map((b, i)=>{
+        const hardCap = Math.min(4, getPlayerCaps(b.playerName || b.name, b.role || "BOWL").maxWickets);
+        const oversBowled = ballsByBowler[i] / 6;
+        const oversBasedCap = Math.min(4, Math.max(1, Math.ceil(oversBowled * 1.25)));
+        return Math.min(hardCap, oversBasedCap);
+      });
       const wk = activeBowlers.map(()=>0);
       let remaining = Math.max(0, Math.min(totalWickets, 10));
       let guard = 0;
@@ -2674,6 +3004,7 @@ function clamp(value, min, max){
           let best = 0;
           let bestScore = -Infinity;
           for(let i=0;i<activeBowlers.length;i++){
+            if(wk[i] >= caps[i]) continue;
             const nm = activeBowlers[i].playerName || activeBowlers[i].name;
             const rl = activeBowlers[i].role || "BOWL";
             const r = getPlayerRating(nm, rl);
@@ -2681,6 +3012,7 @@ function clamp(value, min, max){
             const score = r + w * 2.1 + (isSpecialistBowlingRole(rl) ? 1 : 0);
             if(score > bestScore){ bestScore = score; best = i; }
           }
+          if(bestScore === -Infinity) break;
           wk[best]++;
           remaining--;
           continue;
@@ -2707,7 +3039,7 @@ function clamp(value, min, max){
           })
           .sort((a,b)=> b.eliteScore - a.eliteScore);
         const topElite = eliteOrder[0];
-        if(topElite && topElite.overs >= 3 && wk[topElite.i] === 0 && Math.random() < 0.72){
+        if(topElite && topElite.overs >= 3 && wk[topElite.i] === 0 && wk[topElite.i] < caps[topElite.i] && Math.random() < 0.72){
           let donor = -1;
           let donorScore = -Infinity;
           for(let i=0; i<wk.length; i++){
@@ -2817,7 +3149,7 @@ function clamp(value, min, max){
       const result = activeBowlers.map((b,idx) => {
         const ballsBowled = ballsByBowler[idx];
         const r = Math.max(0, runsAlloc[idx]);
-        const wickets = Math.max(0, wk[idx]);
+        const wickets = Math.max(0, Math.min(4, wk[idx], caps[idx]));
         const maxMaiden = Math.floor(ballsBowled / 6);
         const maidens = maxMaiden > 0 && Math.random() > 0.92 ? 1 : 0;
         const econ = ballsBowled > 0 ? Math.round((r * 6 / ballsBowled) * 10) / 10 : 0;
@@ -2893,10 +3225,18 @@ function clamp(value, min, max){
       const chaseTarget = firstFinalScore + 1;
       let secondTargetScore = secondProjectedRaw;
       if(secondProjectedRaw >= chaseTarget){
-        secondTargetScore = Math.max(chaseTarget, Math.min(285, chaseTarget + Math.floor(Math.random() * 6)));
+        const chasePressure = chaseTarget >= 245 ? 0.82 : chaseTarget >= 225 ? 0.64 : chaseTarget >= 205 ? 0.4 : chaseTarget >= 185 ? 0.2 : 0.08;
+        const headroom = secondProjectedRaw - chaseTarget;
+        const collapseChance = clampValue(chasePressure - Math.min(0.2, headroom / 60), 0.04, 0.88);
+        if(Math.random() < collapseChance){
+          const missBy = chaseTarget >= 225 ? (6 + getRandomInt(18)) : chaseTarget >= 200 ? (4 + getRandomInt(14)) : (2 + getRandomInt(10));
+          secondTargetScore = Math.max(0, firstFinalScore - missBy);
+        } else {
+          secondTargetScore = Math.max(chaseTarget, Math.min(285, chaseTarget + getRandomInt(5)));
+        }
       } else {
         secondTargetScore = Math.max(0, Math.min(firstFinalScore, secondProjectedRaw));
-        if(firstFinalScore - secondTargetScore <= 8 && Math.random() < 0.08){
+        if(firstFinalScore - secondTargetScore <= 3 && Math.random() < 0.015){
           secondTargetScore = firstFinalScore; // occasional tie finish
         }
       }
@@ -2944,12 +3284,14 @@ function clamp(value, min, max){
           }
         }
       }
-      const secondBalls = estimateInningsBalls(secondTargetScore, secondWickets, {
-        isChase: true,
-        chaseWon,
-        chaseContext: secondChaseContextPreview,
-        chaseTarget
-      });
+      const secondBalls = (!chaseWon && secondTargetScore === firstFinalScore)
+        ? 120
+        : estimateInningsBalls(secondTargetScore, secondWickets, {
+            isChase: true,
+            chaseWon,
+            chaseContext: secondChaseContextPreview,
+            chaseTarget
+          });
       const secondChaseContext = buildChaseContext(chaseTarget, secondTargetScore, secondBalls, conditions, secondBattingStrength, secondBowlingStrength);
       const secondDismissalProfile = buildDismissalProfile(secondWickets, {
         conditions,
@@ -3052,8 +3394,8 @@ function clamp(value, min, max){
       } else {
         scoreA += 4 + conditions.chaseAdj + randomNoise(5);
       }
-      scoreA = Math.max(92, Math.min(260, Math.round(scoreA)));
-      scoreB = Math.max(92, Math.min(260, Math.round(scoreB)));
+      scoreA = Math.max(92, Math.min(252, Math.round(scoreA)));
+      scoreB = Math.max(92, Math.min(252, Math.round(scoreB)));
 
       const scorecard = generateScorecardForMatch(squadA, squadB, scoreA, scoreB, tossInfo, idxA, idxB, conditions);
       scoreA = scorecard.teamA.score;
@@ -3079,9 +3421,11 @@ function clamp(value, min, max){
           summaryLine = `${squadB.name} beat ${squadA.name} by ${margin} runs`;
         }
       } else {
-        winnerIdx = -1;
+        const superOver = resolveSuperOver(squadA, squadB, conditions);
+        winnerIdx = superOver.winnerIdx;
         margin = 0;
-        summaryLine = `${squadA.name} vs ${squadB.name} ended in a tie`;
+        summaryLine = superOver.summaryLine;
+        scorecard.superOver = superOver;
       }
       return { idxA, idxB, scoreA, scoreB, winnerIdx, margin, summaryLine, toss: tossInfo, conditions, details: scorecard };
     }
@@ -3126,6 +3470,31 @@ function clamp(value, min, max){
         cond.style.marginTop = "4px";
         cond.textContent = `📍 ${matchRes.conditions.venue} | Pitch: ${matchRes.conditions.pitch} | Boundary: ${matchRes.conditions.boundary} | Weather: ${matchRes.conditions.weather}${matchRes.conditions.dew ? " | Dew: yes" : ""}`;
         wrapper.appendChild(cond);
+      }
+      if(sc.superOver && Array.isArray(sc.superOver.rounds) && sc.superOver.rounds.length){
+        const latestRound = sc.superOver.rounds[sc.superOver.rounds.length - 1];
+        const superOverBox = document.createElement("div");
+        superOverBox.className = "super-over-summary";
+        const superOverTitle = document.createElement("h4");
+        superOverTitle.textContent = "Super Over";
+        superOverBox.appendChild(superOverTitle);
+        if(latestRound.teamA && latestRound.teamB){
+          const line = document.createElement("div");
+          line.className = "small-text";
+          line.textContent = `${latestRound.teamA.battingTeam} ${latestRound.teamA.score}/${latestRound.teamA.wickets} (${latestRound.teamA.overs}) vs ${latestRound.teamB.battingTeam} ${latestRound.teamB.score}/${latestRound.teamB.wickets} (${latestRound.teamB.overs})`;
+          superOverBox.appendChild(line);
+          const lineup = document.createElement("div");
+          lineup.className = "small-text";
+          lineup.style.marginTop = "4px";
+          lineup.textContent = `${latestRound.teamA.battingTeam}: ${latestRound.teamA.config.batters.map(formatPlayerName).join(", ")} | Bowler: ${formatPlayerName(latestRound.teamB.config.bowler)}. ${latestRound.teamB.battingTeam}: ${latestRound.teamB.config.batters.map(formatPlayerName).join(", ")} | Bowler: ${formatPlayerName(latestRound.teamA.config.bowler)}.`;
+          superOverBox.appendChild(lineup);
+        } else if(latestRound.note){
+          const line = document.createElement("div");
+          line.className = "small-text";
+          line.textContent = latestRound.note;
+          superOverBox.appendChild(line);
+        }
+        wrapper.appendChild(superOverBox);
       }
 
       function createInningsSection(innings){
@@ -3458,6 +3827,10 @@ function clamp(value, min, max){
           out += "\nPlaying XI (batting order):\n";
           p.playing.xi.forEach((n,i)=> out += `${i+1}. ${formatPlayerName(n)}\n`);
           out += "Impact: "+formatPlayerName(p.playing.impact)+"\n";
+          if(p.playing.superOver && Array.isArray(p.playing.superOver.batters) && p.playing.superOver.batters.length){
+            out += `Super Over Batters: ${p.playing.superOver.batters.map(formatPlayerName).join(", ")}\n`;
+            out += `Super Over Bowler: ${formatPlayerName(p.playing.superOver.bowler || "-")}\n`;
+          }
           if(Array.isArray(p.playing.bowlingPlan) && p.playing.bowlingPlan.some(Boolean)){
             out += "Bowling Plan:\n";
             p.playing.bowlingPlan.forEach((bn, i)=>{ out += `Ov ${i+1}: ${bn ? formatPlayerName(bn) : "auto"}\n`; });
@@ -3469,6 +3842,9 @@ function clamp(value, min, max){
     });
 
     function populateSimSelects(){
+      const prevA = teamASelect ? teamASelect.value : "";
+      const prevB = teamBSelect ? teamBSelect.value : "";
+      const prevVenue = venueSelect ? venueSelect.value : "";
       teamASelect.innerHTML = "";
       teamBSelect.innerHTML = "";
       if(venueSelect){
@@ -3503,6 +3879,15 @@ function clamp(value, min, max){
         teamASelect.appendChild(o);
         teamBSelect.appendChild(o.cloneNode(true));
       });
+      const hasPrevA = Array.from(teamASelect.options).some(opt=>opt.value === prevA);
+      const hasPrevB = Array.from(teamBSelect.options).some(opt=>opt.value === prevB);
+      if(hasPrevA) teamASelect.value = prevA;
+      if(hasPrevB) teamBSelect.value = prevB;
+      if(!teamASelect.value && players[0]) teamASelect.value = "0";
+      if(!teamBSelect.value && players[1]) teamBSelect.value = "1";
+      if(venueSelect && Array.from(venueSelect.options).some(opt=>opt.value === prevVenue)){
+        venueSelect.value = prevVenue;
+      }
       syncTossCallerOptions();
     }
 
@@ -3510,6 +3895,8 @@ function clamp(value, min, max){
     renderImportedStatsSummary();
     renderGlobalSummary();
     updateBestSquadSummary();
+    renderLatestPickFeed();
+    updateTurnOwnerBanner();
     loadCachedStatsFromServer()
       .then(cache=>{
         if(cache && Object.keys(cache).length){
