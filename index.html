@@ -10,7 +10,7 @@
   <h1>IPL Fantasy League</h1>
 
   <div class="app-shell">
-    <div class="card">
+    <div class="card" id="draftCard">
       <h2>Draft: Spin & Pick</h2>
       <div id="gameStatus" class="small-text">Go to the Setup tab below, configure players, then come back here to spin.</div>
       <div class="live-draft-strip">
@@ -38,7 +38,7 @@
             <div id="pickMessage"></div>
           </form>
 
-          <div class="small-text" style="margin-top:6px">Rules: 12 players, team cap uses your setup value, max 4 foreign, each player unique globally.</div>
+          <div id="modeRulesText" class="small-text" style="margin-top:6px">Rules: 12 players, team cap uses your setup value, max 4 foreign, each player unique globally.</div>
         </div>
       </div>
     </div>
@@ -54,12 +54,18 @@
       <div class="tabs">
         <button class="tab-btn active" data-tab="setup">Setup</button>
         <button class="tab-btn" data-tab="squads">Squads</button>
+        <button class="tab-btn" data-tab="auction">Auction</button>
         <button class="tab-btn" data-tab="sim">Match Simulator</button>
         <button class="tab-btn" data-tab="stats">Stats</button>
       </div>
 
       <div id="tab-setup" class="tab-panel active">
         <form id="setup-form">
+          <label for="gameModeSelect">Play mode:</label>
+          <select id="gameModeSelect">
+            <option value="spin">Spin Draft + Match Simulator</option>
+            <option value="auction">Live Auction + Match Simulator</option>
+          </select>
           <label for="numPlayers">Number of players (2–8):</label>
           <input type="number" id="numPlayers" min="2" max="8" value="2" required/>
           <label for="playerNames" class="small-text">Player names (comma separated). If empty default names will be used.</label>
@@ -98,6 +104,80 @@
 
       <div id="tab-squads" class="tab-panel">
         <div class="players-list" id="playersList"></div>
+      </div>
+
+      <div id="tab-auction" class="tab-panel">
+        <div class="auction-shell">
+          <div class="auction-main">
+            <div class="auction-header">
+              <div>
+                <h3>IPL Auction Arena</h3>
+                <div id="auctionStatusLine" class="small-text">Create teams in Setup, then initialize auction.</div>
+              </div>
+              <div class="auction-admin-actions">
+                <button id="auctionInitBtn" type="button" class="small-btn">Initialize Auction</button>
+                <button id="auctionStartBtn" type="button" class="small-btn">Start</button>
+                <button id="auctionPauseBtn" type="button" class="small-btn">Pause</button>
+                <button id="auctionNextBtn" type="button" class="small-btn">Next Lot</button>
+              </div>
+            </div>
+
+            <div class="auction-current-card" id="auctionCurrentCard">
+              <div class="auction-player-hero">
+                <div id="auctionPlayerAvatar" class="auction-player-avatar">IPL</div>
+                <div>
+                  <div id="auctionSetBadge" class="auction-set-badge">Auction not started</div>
+                  <h4 id="auctionPlayerName">No current player</h4>
+                  <div id="auctionPlayerMeta" class="small-text">Current lot details will appear here.</div>
+                </div>
+              </div>
+              <div class="auction-bid-board">
+                <div class="auction-bid-stat">
+                  <span class="small-text">Base Price</span>
+                  <strong id="auctionBasePrice">-</strong>
+                </div>
+                <div class="auction-bid-stat">
+                  <span class="small-text">Highest Bid</span>
+                  <strong id="auctionCurrentBid">-</strong>
+                </div>
+                <div class="auction-bid-stat">
+                  <span class="small-text">Highest Bidder</span>
+                  <strong id="auctionHighestBidder">-</strong>
+                </div>
+                <div class="auction-bid-stat">
+                  <span class="small-text">Timer</span>
+                  <strong id="auctionTimer">00</strong>
+                </div>
+              </div>
+              <div class="auction-bid-actions">
+                <button id="auctionBidBtn" type="button">Place Next Bid</button>
+                <div id="auctionBidHint" class="small-text">Join from each device with the team name you control to bid live.</div>
+              </div>
+            </div>
+
+            <div class="auction-panels">
+              <div class="auction-panel">
+                <h4>Bid History</h4>
+                <div id="auctionBidHistory" class="auction-list empty-state">No bids yet.</div>
+              </div>
+              <div class="auction-panel">
+                <h4>Sold / Unsold</h4>
+                <div id="auctionLotHistory" class="auction-list empty-state">Auction history will appear here.</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="auction-side">
+            <div class="auction-panel">
+              <h4>Team Leaderboard</h4>
+              <div id="auctionLeaderboard" class="auction-list empty-state">Initialize auction to view teams.</div>
+            </div>
+            <div class="auction-panel">
+              <h4>Team Squads</h4>
+              <div id="auctionTeamsBoard" class="auction-list empty-state">Auction squads will appear here.</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div id="tab-sim" class="tab-panel">
